@@ -1,2 +1,13 @@
 # home-public
 Public bootstrap for home
+
+```shell
+curl -fsSLO https://raw.githubusercontent.com/itsayellow/home-public/HEAD/setup.sh
+```
+
+Or for the daring:
+
+```shell
+curl -fsSL https://raw.githubusercontent.com/itsayellow/home-public/HEAD/setup.sh | bash
+```
+
