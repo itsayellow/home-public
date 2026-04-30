@@ -3,6 +3,8 @@ Public bootstrap for home
 
 ```shell
 curl -fsSLO https://raw.githubusercontent.com/itsayellow/home-public/HEAD/setup
+less setup
+bash setup
 ```
 
 Or for the daring:
