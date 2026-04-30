@@ -1,3 +1,352 @@
 #!/bin/bash
+set -euo pipefail
 
-echo "Running setup.sh!"
+HOSTNAME=$(hostname)
+DATE=$(date)
+OSNAME=$(uname)
+if [[ $OSNAME == "Darwin" ]] ; then
+    OSNAME_PRETTY="macOS"
+else
+    OSNAME_PRETTY=$OSNAME
+fi
+
+# Process switch arguments
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -s|--git-ssh)
+      GIT_SSH=true
+      shift # Move past the argument
+      ;;
+    -y|--yes)
+      YES=true
+      shift # Move past the argument
+      ;;
+    -h|--help)
+      echo "Usage: $0 [-s|--git-ssh] [-y|--yes]"
+      exit 0
+      ;;
+    *)
+      # This handles unknown options or positional arguments
+      # If you want to keep positional arguments, you'd collect them here
+      POSITIONAL_ARGS+=("$1")
+      shift
+      ;;
+  esac
+done
+
+# --------------------
+# Functions
+# --------------------
+confirm() {
+    if [[ "$YES" == true ]]; then
+        return 0
+    fi
+    echo -n "Proceed? (y/n/q): "
+    read -n 1 char
+    echo "" # Adds a newline for cleaner output
+    case $char in
+        [Yy])
+            echo "You chose Yes. Proceeding..."
+            return 0
+            ;;
+        [Nn])
+            echo "You chose No. Skipping..."
+            return 1
+            ;;
+        [Qq])
+            echo "Quitting script."
+            exit 0
+            ;;
+        *)
+            echo "Invalid input. Please choose y, n, or q."
+            ;;
+    esac
+}
+echo_stderr() {
+    echo "$*" >& 2
+}
+home_clone_exists() {
+    if [[ -d ~/git/home ]] && git -C ~/git/home rev-parse &> /dev/null; then
+        return 0
+    else
+        return 1
+    fi
+}
+get_latest_python_version() {
+    # Search for latest python version installed
+    # Define the list of versions you want to search for, in descending order.
+    #    Update this list as new versions of Python are released.
+    local known_versions="3.14 3.13 3.12 3.11 3.10 3.9 3.8 3.7 3.6"
+
+    local latest_python=""
+
+    # Search for the executables
+    echo_stderr "Searching for the latest Python 3.x..."
+
+    for ver in $known_versions; do
+        # 'command -v' checks if the executable exists in your $PATH
+        if command -v "python$ver" &> /dev/null; then
+            latest_python="python$ver"
+            break # Stop at the first (highest) match found
+        fi
+    done
+
+    # Handle the case where no specific 3.x version is found
+    if [ -z "$latest_python" ]; then
+        if command -v python3 &> /dev/null; then
+            echo_stderr "Warning: Specific python3.x not found. Falling back to generic 'python3'."
+            latest_python="python3"
+        else
+            echo_stderr "Error: No Python 3 installations found."
+            exit 1
+        fi
+    fi
+
+    echo "$latest_python"
+}
+get_linux_package_manager() {
+    if command -v apt &> /dev/null; then
+        echo "apt"
+    elif command -v dnf &> /dev/null; then
+        echo "dnf"
+    elif command -v yum &> /dev/null; then
+        echo "yum"
+    else
+        echo_stderr "Error: No supported package manager found (apt, dnf, pacman)."
+        exit 1
+    fi
+}
+check_dnf_major() {
+    # --version output looks like "4.14.0" or "5.1.0"
+    # We use 'head -n 1' because DNF 4 outputs many lines of plugin info
+    local version
+    version=$(dnf --version 2>/dev/null | head -n 1)
+
+    if [[ -z "$version" ]]; then
+        return 1 # DNF not installed
+    fi
+
+    if [[ "$version" =~ ^4\. ]]; then
+        echo "4"
+    elif [[ "$version" =~ ^5\. ]]; then
+        echo "5"
+    else
+        return 1 # Unknown version
+    fi
+}
+os_install() {
+    local pkg="$1"
+
+    if command -v "$pkg" &> /dev/null ; then
+        echo "$pkg is already installed."
+        return 0
+    else
+        if [[ $OSNAME == "Darwin" ]] ; then
+            echo "Installing $pkg using Homebrew..."
+            brew install "$pkg"
+        elif [[ $OSNAME == "Linux" ]] ; then
+            local pkg_manager
+            pkg_manager=$(get_linux_package_manager)
+            case $pkg_manager in
+                apt)
+                    sudo apt update && sudo apt install "$pkg" -y
+                    ;;
+                dnf)
+                    sudo dnf install "$pkg" -y
+                    ;;
+                yum)
+                    sudo yum install "$pkg" -y
+                    ;;
+                *)
+                    echo_stderr "Unsupported package manager: $pkg_manager. Please install $pkg manually."
+                    exit 1
+                    ;;
+            esac
+        else
+            echo "Unsupported OS: $OSNAME_PRETTY. Please install $pkg manually."
+            echo "Can't proceed, exiting."
+            exit 1
+        fi
+    fi
+}
+make_git_dir() {
+    echo "Make git/"
+    mkdir -p git
+}
+clone_home_pat() {
+    echo "git config: Keeps the PAT in memory for 1 hour (3600 seconds)"
+    git config --global credential.helper 'cache --timeout=3600'
+
+    echo "Clone home using PAT"
+    git -C ~/git clone https://github.com/itsayellow/home.git
+}
+setup_user_ssh_keys() {
+    echo "Setting up SSH keys for git SSH access"
+    if ! confirm; then
+        echo "Skipping SSH key setup."
+        return 1
+    fi
+    mkdir -p ~/.ssh
+    if [[ ! -f ~/.ssh/id_ed25519 ]]; then
+        echo "SSH key not found, generating new SSH key..."
+        ssh-keygen -t ed25519 -C "$USER@$HOSTNAME" -f ~/.ssh/id_ed25519 -N ""
+    else
+        echo "SSH key already exists at ~/.ssh/id_ed25519"
+    fi
+}
+install_homebrew_macos() {
+    if command -v brew &> /dev/null ; then
+        echo 'Homebrew already installed.'
+    else
+        # Install Homebrew
+        echo 'Installing Homebrew...'
+        /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+    fi
+}
+install_gh() {
+    if command -v gh &> /dev/null ; then
+        echo 'GitHub CLI already installed.'
+    else
+        if [[ $OSNAME == "Darwin" ]] ; then
+            echo "Installing GitHub CLI gh using Homebrew..."
+            brew install gh
+        elif [[ $OSNAME == "Linux" ]] ; then
+            if LINUX_PACKAGE_MANAGER=$(get_linux_package_manager); then
+                case $LINUX_PACKAGE_MANAGER in
+                    apt)
+                        echo "Installing gh for Debian/Ubuntu/etc. using sudo..."
+                        # Install directions from https://cli.github.com/
+                        (type -p wget >/dev/null || (sudo apt update && sudo apt install wget -y)) \
+                            && sudo mkdir -p -m 755 /etc/apt/keyrings \
+                            && out=$(mktemp) && wget -nv -O"$out" https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+                            && cat "$out" | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null \
+                            && sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+                            && sudo mkdir -p -m 755 /etc/apt/sources.list.d \
+                            && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+                            && sudo apt update \
+                            && sudo apt install gh -y
+                        ;;
+                    dnf)
+                        echo "Installing gh for Fedora/RHEL/etc. using sudo..."
+
+                        if dnf_ver=$(check_dnf_major); then
+                            case $dnf_ver in
+                                4)
+                                    echo "Detected DNF version 4.x"
+                                    # DNF v4.*
+                                    sudo dnf install 'dnf-command(config-manager)'
+                                    sudo dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
+                                    sudo dnf install gh --repo gh-cli
+                                    ;;
+                                5)
+                                    echo "Detected DNF version 5.x"
+                                    # DNF v5.*
+                                    sudo dnf install dnf5-plugins
+                                    sudo dnf config-manager addrepo --from-repofile=https://cli.github.com/packages/rpm/gh-cli.repo
+                                    sudo dnf install gh --repo gh-cli
+                                    ;;
+                                *)
+                                    echo "Unknown DNF version detected: $dnf_ver"
+                                    echo "Please check https://cli.github.com/ for installation instructions for your Linux distribution."
+                                    exit 1
+                            esac
+                        else
+                            echo "Could not detect DNF version."
+                            echo "Please check https://cli.github.com/ for installation instructions for your Linux distribution."
+                            exit 1
+                        fi
+
+                        ;;
+                    yum)
+                        echo "Installing gh with yum using sudo..."
+                        type -p yum-config-manager >/dev/null || sudo yum install yum-utils
+                        sudo yum-config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
+                        sudo yum install gh
+                        ;;
+                    *)
+                        echo "Please check https://cli.github.com/ for installation instructions for your Linux distribution."
+                        exit 1
+                        ;;
+                esac
+            else
+                echo "Could not determine Linux package manager. Please check https://cli.github.com/ for installation instructions for your Linux distribution."
+                exit 1
+            fi
+        else
+            echo "Github CLI gh not installed.  Please install.  (See https://cli.github.com/ )"
+            exit 1
+        fi
+    fi
+}
+gh_login() {
+    echo "Logging into GitHub CLI - Enter your credentials in a web browser..."
+    if ! confirm; then
+        echo "Skipping GitHub CLI login."
+        return 1
+    fi
+    gh auth login
+}
+register_ssh_key_with_github() {
+    echo "Registering SSH key with GitHub"
+    if ! confirm; then
+        echo "Skipping SSH key registration."
+        return 1
+    fi
+    gh ssh-key add ~/.ssh/id_ed25519.pub --title "$USER@$HOSTNAME - $DATE"
+}
+clone_home_ssh() {
+    echo "Cloning home.git using SSH"
+    if ! confirm; then
+        echo "Skipping home.git clone."
+        return 1
+    fi
+    git -C ~/git clone git@github.com:itsayellow/home.git
+}
+run_setupunix_py() {
+    LATEST_PYTHON="$(get_latest_python_version)"
+    echo "Running setupunix.py using $LATEST_PYTHON..."
+    "$LATEST_PYTHON" ~/git/home/setupunix.py
+}
+run_setupmacos_py() {
+    LATEST_PYTHON="$(get_latest_python_version)"
+    echo "Running setupmacos.py using $LATEST_PYTHON..."
+    "$LATEST_PYTHON" ~/git/home/setupmacos.py
+}
+
+
+# --------------------
+# Main Script
+# --------------------
+echo "Running on $OSNAME_PRETTY"
+if [[ ! "$OSNAME" == "Darwin" && ! "$OSNAME" == "Linux" ]] ; then
+    echo "Setup script invalid for OS: $OSNAME_PRETTY.  Exiting."
+    exit 1
+fi
+if [[ "$OSNAME" == "Darwin" ]] ; then
+    install_homebrew_macos
+fi
+os_install git;
+make_git_dir;
+if ! home_clone_exists; then
+    echo "home repo not found in ~/git. Cloning home.git..."
+    if [[ "${GIT_SSH:-false}" == true ]]; then
+        echo "Using git SSH for cloning home.git"
+        setup_user_ssh_keys;
+        install_gh;
+        register_ssh_key_with_github;
+        clone_home_ssh;
+    else
+        echo "Using PAT HTTPS for cloning home.git"
+        clone_home_pat;
+    fi
+else
+    echo "home repo already exists in ~/git. Skipping clone."
+fi
+
+if [[ "$OSNAME" == "Darwin" ]] ; then
+    run_setupmacos_py;
+elif [[ "$OSNAME" == "Linux" ]] ; then
+    run_setupunix_py;
+else
+    echo "No setup script for OS: $OSNAME_PRETTY"
+fi
