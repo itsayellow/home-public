@@ -112,7 +112,7 @@ get_linux_package_manager() {
     elif command -v yum &> /dev/null; then
         echo "yum"
     else
-        echo_stderr "Error: No supported package manager found (apt, dnf, pacman)."
+        echo_stderr "Error: No supported package manager found (apt, dnf, yum, etc.)."
         exit 1
     fi
 }
