@@ -4,6 +4,9 @@ set -euo pipefail
 HOSTNAME=$(hostname)
 DATE=$(date)
 OSNAME=$(uname)
+GIT_SSH=false
+YES=false
+POSITIONAL_ARGS=()
 if [[ $OSNAME == "Darwin" ]] ; then
     OSNAME_PRETTY="macOS"
 else
@@ -305,12 +308,12 @@ clone_home_ssh() {
 run_setupunix_py() {
     LATEST_PYTHON="$(get_latest_python_version)"
     echo "Running setupunix.py using $LATEST_PYTHON..."
-    "$LATEST_PYTHON" ~/git/home/setupunix.py
+    "$LATEST_PYTHON" ~/git/home/setupunix.py "${POSITIONAL_ARGS[@]}"
 }
 run_setupmacos_py() {
     LATEST_PYTHON="$(get_latest_python_version)"
     echo "Running setupmacos.py using $LATEST_PYTHON..."
-    "$LATEST_PYTHON" ~/git/home/setupmacos.py
+    "$LATEST_PYTHON" ~/git/home/setupmacos.py "${POSITIONAL_ARGS[@]}"
 }
 
 
