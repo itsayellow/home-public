@@ -3,7 +3,13 @@ Public bootstrap for home
 
 ```shell
 curl -fsSLO https://raw.githubusercontent.com/itsayellow/home-public/main/setup
+```
+
+```
 less setup
+```
+
+```
 bash setup
 ```
 
