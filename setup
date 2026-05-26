@@ -309,12 +309,20 @@ clone_home_ssh() {
 run_setupunix_py() {
     LATEST_PYTHON="$(get_latest_python_version)"
     echo "Running setupunix.py using $LATEST_PYTHON..."
-    "$LATEST_PYTHON" ~/git/home/setupunix.py "${POSITIONAL_ARGS[@]}"
+    if [[ ${#POSITIONAL_ARGS[@]} -gt 0 ]]; then
+        "$LATEST_PYTHON" ~/git/home/setupunix.py "${POSITIONAL_ARGS[@]}"
+    else
+        "$LATEST_PYTHON" ~/git/home/setupunix.py
+    fi
 }
 run_setupmacos_py() {
     LATEST_PYTHON="$(get_latest_python_version)"
     echo "Running setupmacos.py using $LATEST_PYTHON..."
-    "$LATEST_PYTHON" ~/git/home/setupmacos.py "${POSITIONAL_ARGS[@]}"
+    if [[ ${#POSITIONAL_ARGS[@]} -gt 0 ]]; then
+        "$LATEST_PYTHON" ~/git/home/setupmac.py "${POSITIONAL_ARGS[@]}"
+    else
+        "$LATEST_PYTHON" ~/git/home/setupmac.py
+    fi
 }
 
 
