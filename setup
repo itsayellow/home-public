@@ -306,22 +306,21 @@ clone_home_ssh() {
     fi
     git -C ~/git clone git@github.com:itsayellow/home.git
 }
-run_setupunix_py() {
-    LATEST_PYTHON="$(get_latest_python_version)"
-    echo "Running setupunix.py using $LATEST_PYTHON..."
-    if [[ ${#POSITIONAL_ARGS[@]} -gt 0 ]]; then
-        "$LATEST_PYTHON" ~/git/home/setupunix.py "${POSITIONAL_ARGS[@]}"
+run_setup_py() {
+    if [[ "$OSNAME" == "Darwin" ]] ; then
+        setup_script="setupmac.py";
+    elif [[ "$OSNAME" == "Linux" ]] ; then
+        setup_script="setupunix.py";
     else
-        "$LATEST_PYTHON" ~/git/home/setupunix.py
+        echo "No setup script for OS: $OSNAME_PRETTY"
     fi
-}
-run_setupmacos_py() {
+
     LATEST_PYTHON="$(get_latest_python_version)"
-    echo "Running setupmacos.py using $LATEST_PYTHON..."
+    echo "Running $setup_script using $LATEST_PYTHON..."
     if [[ ${#POSITIONAL_ARGS[@]} -gt 0 ]]; then
-        "$LATEST_PYTHON" ~/git/home/setupmac.py "${POSITIONAL_ARGS[@]}"
+        "$LATEST_PYTHON" "$HOME/git/home/$setup_script" "${POSITIONAL_ARGS[@]}"
     else
-        "$LATEST_PYTHON" ~/git/home/setupmac.py
+        "$LATEST_PYTHON" "$HOME/git/home/$setup_script"
     fi
 }
 
@@ -355,10 +354,4 @@ else
     echo "home repo already exists in ~/git. Skipping clone."
 fi
 
-if [[ "$OSNAME" == "Darwin" ]] ; then
-    run_setupmacos_py;
-elif [[ "$OSNAME" == "Linux" ]] ; then
-    run_setupunix_py;
-else
-    echo "No setup script for OS: $OSNAME_PRETTY"
-fi
+run_setup_py;
