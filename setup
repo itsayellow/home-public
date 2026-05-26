@@ -346,6 +346,7 @@ if ! home_clone_exists; then
         install_gh;
         register_ssh_key_with_github;
         clone_home_ssh;
+        # TODO: re-clone itsayellow/home-public using ssh
     else
         echo "Using PAT HTTPS for cloning home.git"
         clone_home_pat;
